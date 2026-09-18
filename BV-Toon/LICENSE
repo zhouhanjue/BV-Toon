@@ -1,0 +1,60 @@
+# BV-Toon 使用许可 / License / ライセンス  v1.0
+
+版权所有 (c) 2026 BVan (@BVan)。保留所有权利。
+Copyright (c) 2026 BVan (@BVan). All rights reserved.
+Copyright (c) 2026 BVan (@BVan). All rights reserved.
+
+本许可同时以中文、英文、日文发布；三种文本具有同等效力，如有歧义以中文为准。
+This license is published in Chinese, English and Japanese; all three texts have equal
+effect, and the Chinese text prevails in case of ambiguity.
+本ライセンスは中国語・英語・日本語で提供されます。三つは同等に有効であり、解釈に
+相違がある場合は中国語版を優先します。
+
+---
+
+## 中文
+
+1. **允许使用**：任何人可免费下载、安装、使用本插件，包括在商业项目中使用。
+2. **禁止再分发**：不得以任何形式复制、转发、上传、镜像、打包本插件（无论原版或修改版）
+   提供给第三方，包括网盘、群聊、论坛、代码托管平台等渠道。
+3. **禁止发布修改版**：不得发布基于本插件的修改版、衍生版或改名版（换皮再发布同样禁止）。
+   仅为个人使用而修改源码不受限制，但不得公开、不得分发。
+4. **必须标明原作者**：使用本插件生成的图片、视频等作品对外发布时，必须保留插件自动
+   添加的署名水印，或在作品说明中明确标注：
+   `渲染 BVToon / @BVan`
+5. **无担保**：本插件按"现状"提供，作者不对使用后果承担任何责任。
+6. **终止**：违反上述任何一条，本许可自动终止，使用者须立即停止使用并删除全部副本。
+
+## English
+
+1. **Use permitted**: anyone may download, install and use this add-on free of charge,
+   including in commercial projects.
+2. **No redistribution**: you may not copy, forward, upload, mirror, repackage or otherwise
+   make this add-on (original or modified) available to any third party, including via file
+   sharing, chat groups, forums or code hosting platforms.
+3. **No publishing modified versions**: you may not publish modified, derivative or renamed
+   versions of this add-on (re-skinning and republishing is equally prohibited). Modifying
+   the source for your own private use is allowed, but you may not publish or distribute it.
+4. **Attribution required**: when you publish images, videos or other works produced with
+   this add-on, you must keep the watermark it adds, or state clearly:
+   `渲染 BVToon / @BVan`
+5. **No warranty**: the add-on is provided "as is"; the author accepts no liability.
+6. **Termination**: any violation terminates this license automatically; you must then stop
+   using the add-on and delete all copies.
+
+## 日本語
+
+1. **使用の許可**：誰でも無償で本アドオンをダウンロード・インストール・使用できます
+   （商用プロジェクトでの使用を含む）。
+2. **再配布の禁止**：本アドオン（オリジナル・改変版を問わず）を、いかなる形式であれ
+   第三者に複製・転送・アップロード・ミラー・再パッケージして提供することはできません
+   （ファイル共有、チャット、掲示板、コードホスティング等を含む）。
+3. **改変版の公開の禁止**：本アドオンを基にした改変版・派生版・名称変更版の公開は
+   できません（外観だけ変えての再公開も同様に禁止）。私的な使用のための改変は自由ですが、
+   公開・配布はできません。
+4. **原作者の明記**：本アドオンで制作した画像・動画等を公開する際は、アドオンが自動で
+   付与する署名を保持するか、説明欄に明記してください：
+   `渲染 BVToon / @BVan`
+5. **無保証**：本アドオンは「現状のまま」提供され、作者はいかなる責任も負いません。
+6. **終了**：上記のいずれかに違反した場合、本ライセンスは自動的に終了します。使用者は
+   直ちに使用を中止し、すべての複製を削除してください。
