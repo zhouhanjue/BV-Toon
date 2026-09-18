@@ -8,6 +8,11 @@
 * 许可：**GPL-3.0**（见 [`LICENSE`](LICENSE)）
 * 依赖：[mmd_tools](https://extensions.blender.org/add-ons/mmd-tools/)（开源 MMD 导入器）+ Blender 4.5 或更新
 
+## 发版文案
+
+* 最新版本说明：[`RELEASE-1.4.0.md`](RELEASE-1.4.0.md)（可直接粘进 GitHub Release）
+* 逐版改动：[`CHANGELOG.md`](CHANGELOG.md)
+
 ## 快速开始
 
 1. 下载 `BV-Toon/` 整个文件夹，或从 Release 页面取打包好的 zip

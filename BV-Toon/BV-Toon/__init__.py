@@ -19,7 +19,7 @@
 bl_info = {
     "name": "BV-Toon",
     "author": "BVan / DEEPSEEK",
-    "version": (1, 1, 7),
+    "version": (1, 4, 0),
     "blender": (3, 6, 0),
     "location": "3D视图 > N 面部 > Toon",
     "description": "MMD 模型一键卡渲：原生读取材质、一键套用、边缘预览、目影、腮红、泛光、还原。",
@@ -67,7 +67,7 @@ class BVTOON_PT_panel(bpy.types.Panel):
         row = box2.row(align=True)
         row.operator("bvtoon.add_blush", text="添加腮红", icon="OVERLAY")
         row = box2.row(align=True)
-        row.operator("bvtoon.restore_mat", text="还原成基本材质")
+        # 「还原成基本材质」已按要求去掉：原节点现在直接删除，不再保留
         row = box2.row(align=True)
         row.prop(context.scene, '["bv_edge_scale"]', text="描边粗细")
         row.operator("bvtoon.set_edge_width", text="应用", icon="CHECKMARK")
@@ -167,6 +167,9 @@ class BVTOON_OT_one_click(bpy.types.Operator):
         scene = context.scene
         if "bv_edge_scale" not in scene:
             scene["bv_edge_scale"] = 0.08
+        # 删掉 mmd_tools 原来那套节点，材质树只留卡渲自己的
+        dropped = sum(bv_materials.drop_other_nodes(mat) for mat in edge_mats)
+        print("[BV-Toon] 已删除非卡渲节点 %d 个（材质树只剩 bv_* 与输出）" % dropped)
         bv_materials.apply_edge_preview(edge_mats, thickness=float(scene["bv_edge_scale"]))
         # 色彩管理：视图变换改成「标准」—— AgX/Filmic 会把卡渲的颜色洗淡、明暗压平
         try:
@@ -184,19 +187,6 @@ class BVTOON_OT_one_click(bpy.types.Operator):
         return {"FINISHED"}
 
 
-class BVTOON_OT_restore(bpy.types.Operator):
-    """还原成基本材质（拿回基础贴图 + Principled）"""
-    bl_idname = "bvtoon.restore_mat"
-    bl_label = "还原成基本材质"
-    bl_options = {"REGISTER", "UNDO"}
-
-    def execute(self, context):
-        materials = target_materials(context) or \
-            [slot.material for obj in target_objects(context)
-             for slot in obj.material_slots if slot.material is not None]
-        done = sum(1 for mat in materials if bv_materials.restore(mat))
-        self.report({"INFO"}, "已还原 %d 个材质" % done)
-        return {"FINISHED"}
 
 
 class BVTOON_OT_add_blush(bpy.types.Operator):
@@ -316,7 +306,6 @@ CLASSES = (
     BVTOON_PT_panel,
     BVTOON_OT_one_click,
     BVTOON_OT_apply_preset,
-    BVTOON_OT_restore,
     BVTOON_OT_add_blush,
     BVTOON_OT_set_eye_shadow,
     BVTOON_OT_edge_preview_create,

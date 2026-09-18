@@ -67,7 +67,7 @@ def apply_preset(mat, preset_index=0, sphere_strength=1.0, report=None):
         if sphere_mode == 2:
             sphere_strength = 1.0
         elif sphere_mode == 3:
-            sphere_strength = 0.6
+            sphere_strength = 0.3
         else:
             sphere_strength = strength
         base_socket = util.sphere_stage(mat, base_socket, sphere_strength)
@@ -104,10 +104,10 @@ def apply_preset(mat, preset_index=0, sphere_strength=1.0, report=None):
     if mask_socket is not None and strength_socket is not None and has_toon:
         mask = tree.nodes.get("bv_toon_mask")
         if mask is None:
-            geometry = tree.nodes.new("ShaderNodeNewGeometry")
+            geometry = tree.nodes.new("ShaderNodeNewGeometry"); geometry.name = "bv_toon_geo"
             geometry.location = (node.location.x - 900, node.location.y - 600)
             geometry.label = "渐变查表（受光程度）"
-            turn = tree.nodes.new("ShaderNodeVectorRotate")
+            turn = tree.nodes.new("ShaderNodeVectorRotate"); turn.name = "bv_toon_turn"
             turn.location = (geometry.location.x + 180, geometry.location.y)
             turn.rotation_type = "AXIS_ANGLE"
             turn.inputs["Axis"].default_value = (0.0, 0.0, 1.0)
@@ -115,23 +115,23 @@ def apply_preset(mat, preset_index=0, sphere_strength=1.0, report=None):
             degrees = None
             turn_socket = node.inputs.get("受光方向")
             if turn_socket is not None:
-                degrees = tree.nodes.new("ShaderNodeMath")
+                degrees = tree.nodes.new("ShaderNodeMath"); degrees.name = "bv_toon_angle"
                 degrees.location = (geometry.location.x, geometry.location.y - 220)
                 degrees.operation = "MULTIPLY"
                 degrees.inputs[1].default_value = 6.283185
                 degrees.inputs[0].default_value = float(turn_socket.default_value)
                 tree.links.new(degrees.outputs[0],
                                turn.inputs["Angle"])
-            split = tree.nodes.new("ShaderNodeSeparateXYZ")
+            split = tree.nodes.new("ShaderNodeSeparateXYZ"); split.name = "bv_toon_split"
             split.location = (turn.location.x + 180, geometry.location.y)
             tree.links.new(turn.outputs["Vector"], split.inputs["Vector"])
-            to_v = tree.nodes.new("ShaderNodeMath")
+            to_v = tree.nodes.new("ShaderNodeMath"); to_v.name = "bv_toon_v"
             to_v.location = (split.location.x + 160, geometry.location.y)
             to_v.operation = "MULTIPLY_ADD"
             to_v.inputs[1].default_value = 0.25
             to_v.inputs[2].default_value = 0.25
             tree.links.new(split.outputs["X"], to_v.inputs[0])
-            uv = tree.nodes.new("ShaderNodeCombineXYZ")
+            uv = tree.nodes.new("ShaderNodeCombineXYZ"); uv.name = "bv_toon_uv"
             uv.location = (to_v.location.x + 160, geometry.location.y)
             uv.inputs["X"].default_value = 0.5
             tree.links.new(to_v.outputs[0], uv.inputs["Y"])
@@ -142,7 +142,7 @@ def apply_preset(mat, preset_index=0, sphere_strength=1.0, report=None):
             sample.extension = "EXTEND"
             sample.image = toon.image
             tree.links.new(uv.outputs["Vector"], sample.inputs["Vector"])
-            grey = tree.nodes.new("ShaderNodeRGBToBW")
+            grey = tree.nodes.new("ShaderNodeRGBToBW"); grey.name = "bv_toon_grey"
             grey.location = (sample.location.x + 180, geometry.location.y)
             tree.links.new(sample.outputs["Color"], grey.inputs["Color"])
             mask = tree.nodes.new("ShaderNodeMath")
@@ -373,33 +373,6 @@ def edge_settings(mat):
     return colour, float(getattr(data, "edge_weight", 1.0))
 
 
-def apply_edge_settings(materials):
-    """把材质自带的描边色/粗细套到模型的描边材质与 solidify 上（模型级取平均）。"""
-    pairs = [p for p in (edge_settings(m) for m in materials) if p]
-    if not pairs:
-        return 0
-    colour = [sum(p[0][i] for p in pairs) / len(pairs) for i in range(3)]
-    weight = sum(p[1] for p in pairs) / len(pairs)
-    touched = 0
-    for mat in bpy.data.materials:
-        if not mat.name.startswith("MMDEdgePreview"):
-            continue
-        mat.diffuse_color = (colour[0], colour[1], colour[2], 1.0)
-        if mat.use_nodes and mat.node_tree is not None:
-            for node in mat.node_tree.nodes:
-                if node.bl_idname in ("ShaderNodeBsdfPrincipled", "ShaderNodeEmission"):
-                    socket = node.inputs.get("Base Color") or node.inputs.get("Color")
-                    if socket is not None:
-                        socket.default_value = (colour[0], colour[1], colour[2], 1.0)
-        touched += 1
-    for obj in bpy.data.objects:
-        for modifier in getattr(obj, "modifiers", []):
-            if modifier.type == "SOLIDIFY":
-                modifier.thickness = max(0.0005, 0.006 * max(0.2, weight))
-                touched += 1
-    print("[BV-Toon] 材质自带描边：颜色 %s / 粗细系数 %.3f（套到 %d 处）"
-          % (tuple(round(c, 3) for c in colour), weight, touched))
-    return touched
 
 def apply_edge_preview(materials, thickness=0.08):
     """按材质自带的描边参数（edge_color / edge_weight）设置 mmd_tools 的描边。
@@ -437,3 +410,71 @@ def apply_edge_preview(materials, thickness=0.08):
     print("[BV-Toon] 描边：套到 %d 处，粗细 %.3f（MMD 原始 0.08）"
           % (touched, thickness))
     return touched
+
+#: mmd_tools 原来那套节点的名字/标签（卡渲接管后清掉）
+
+
+
+def drop_all_nodes(mat):
+    """清空材质树（只留 Material Output）—— 还原用：交给 mmd_tools 重建原来的那套。"""
+    if not mat.use_nodes or mat.node_tree is None:
+        return 0
+    tree = mat.node_tree
+    removed = 0
+    for node in list(tree.nodes):
+        if node.bl_idname == "ShaderNodeOutputMaterial":
+            continue
+        tree.nodes.remove(node)
+        removed += 1
+    return removed
+
+
+def remove_edge_preview():
+    """摘掉 mmd_tools 的边缘预览（描边材质 + 描边修改器）。"""
+    removed = 0
+    try:
+        bpy.ops.mmd_tools.edge_preview_setup(action="CLEAN")
+        removed += 1
+    except Exception as error:
+        print("[BV-Toon] edge_preview CLEAN 失败：%s" % error)
+    for obj in list(bpy.data.objects):
+        for modifier in list(getattr(obj, "modifiers", [])):
+            if "edge" in (modifier.name or "").lower():
+                try:
+                    obj.modifiers.remove(modifier)
+                    removed += 1
+                except Exception as error:
+                    print("[BV-Toon] 删描边修改器失败：%s" % error)
+    for mat in list(bpy.data.materials):
+        if (mat.name or "").startswith("mmd_edge"):
+            try:
+                bpy.data.materials.remove(mat)
+                removed += 1
+            except Exception as error:
+                print("[BV-Toon] 删描边材质失败：%s" % error)
+    return removed
+
+
+
+
+
+
+def drop_other_nodes(mat):
+    """白名单清理：只留卡渲自己的节点（bv_*）和 Material Output，其余全删。
+
+    比按名字猜原来的节点可靠 —— mmd_tools 每个版本命名的花样都不一样。
+    """
+    if not mat.use_nodes or mat.node_tree is None:
+        return 0
+    tree = mat.node_tree
+    if tree.nodes.get("bv_shading") is None:
+        return 0                      # 没被卡渲接管过的材质不动
+    removed = 0
+    for node in list(tree.nodes):
+        if node.name.startswith("bv_"):
+            continue
+        if node.bl_idname == "ShaderNodeOutputMaterial":
+            continue
+        tree.nodes.remove(node)
+        removed += 1
+    return removed
