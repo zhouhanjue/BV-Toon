@@ -672,3 +672,55 @@ may consider it more useful to permit linking proprietary applications with
 the library.  If this is what you want to do, use the GNU Lesser General
 Public License instead of this License.  But first, please read
 <https://www.gnu.org/licenses/why-not-lgpl.html>.
+
+================================================================================
+ADDITIONAL TERMS UNDER SECTION 7 OF THE GNU GPL v3
+GNU GPL v3 第 7 条附加条款 / GNU GPL v3 第 7 条に基づく追加条項
+================================================================================
+
+Pursuant to section 7(b) and 7(c) of the GNU General Public License version 3, the
+following additional terms apply to the material added to this work by its author
+(BVan / @BVan):
+
+1. Attribution must be preserved.  Any conveyance of this work, of a modified
+   version, or of a work based on it, must keep intact the author attribution
+   and the project link in the source files and in any "Appropriate Legal
+   Notices" the work displays, in the form:
+       BVToon / @BVan
+   In addition, works (images, videos, etc.) produced with this add-on must
+   credit the author as:  渲染 BVToon / @BVan
+
+2. Origin must not be misrepresented.  Modified versions must be marked in a
+   reasonable way as different from the original, and must not be presented as
+   the original work or as being authored by the original author.
+
+These additional terms are permissive of, and do not restrict, any of the
+freedoms granted by the GNU GPL v3.  All other terms of the GNU GPL v3 remain in
+full force.
+
+--- 中文 ---
+依据 GNU GPL v3 第 7 条 (b)(c) 两款，作者（BVan / @BVan）对本作品所添加部分附加以下条款：
+
+1. 必须保留署名：再分发本作品、修改版或基于本作品的作品时，源码文件与该作品显示的
+   "适当法律声明"中必须保留作者署名与项目链接，形式为：BVToon / @BVan。
+   另外，用本插件制作的作品（图片、视频等）对外发布时须注明：渲染 BVToon / @BVan。
+
+2. 不得歪曲来源：修改版必须以合理方式标明与原始版本不同，不得冒充原始作品或原始作者的作品。
+
+以上附加条款不限制、也不削减 GNU GPL v3 授予的任何自由；GPL v3 其余条款完全有效。
+
+--- 日本語 ---
+GNU GPL v3 第 7 条 (b)(c) に基づき、作者（BVan / @BVan）が本作品に追加した部分には
+以下の追加条項が適用されます：
+
+1. 署名の保持：本作品・改変版・本作品に基づく作品を頒布する際は、ソースファイルおよび
+   表示される「適切な法的表示」に作者の署名とプロジェクトへのリンクを保持してください。
+   形式：BVToon / @BVan
+   また、本アドオンで制作した作品（画像・動画等）を公開する際は
+   「渲染 BVToon / @BVan」と明記してください。
+
+2. 出所の偽装の禁止：改変版は、原本と異なることを合理的な方法で明示し、原本または
+   原作者の作品であるかのように提示してはなりません。
+
+本追加条項は GNU GPL v3 が与える自由を制限するものではありません。GPL v3 のその他の条項は
+引き続き完全に有効です。
