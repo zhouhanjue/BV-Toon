@@ -1,62 +1,21 @@
 # BV-Toon
 
-> MMD 模型一键卡渲 · 原生读取材质 · 边缘预览 · 目影 · 腮红 · 泛光 · 还原
+> MMD 模型一键卡渲 · 原生读取材质 · 渐变贴图驱动明暗 · 边缘预览 · 目影 · 腮红 · 泛光
 
-**BV-Toon 是独立编写的 Blender 插件**：代码、节点图、资产全部自写，不含任何第三方插件的代码或资源。
-着色节点组装在自带的 `BVToonData/BVToonShading.blend` 里，可以直接用 Blender 打开手改；缺少该资产时会自动回退到现场生成。
+**独立编写的 Blender 插件**：代码、节点图、资产全部自写，不含任何第三方插件的代码或资源。
 
-> 设计上参考了 MMD 卡渲的通行做法，并受同类 Blender 插件的公开行为启发。运行需要开源插件 [mmd_tools](https://extensions.blender.org/add-ons/mmd-tools/)。本项目与任何第三方插件不存在代码或资源上的关系。
+* 插件源码与用法见 **[`BV-Toon/README.md`](BV-Toon/README.md)**
+* 许可：**自定义使用许可**（允许使用 / 禁止再分发 / 禁止发布修改版 / 必须署名，中英日三语，见 [`LICENSE`](LICENSE)）
+* 依赖：[mmd_tools](https://extensions.blender.org/add-ons/mmd-tools/)（开源 MMD 导入器）+ Blender 4.5 或更新
 
-## 它做什么
+## 发版文案
 
-| 功能 | 说明 |
-|---|---|
-| **一键卡渲** | 一个按钮：套卡渲预设 → 生成 MMD 边缘预览 → 设置目影 |
-| **原生读取材质** | 直接读 mmd_tools 的 `mmd_material`（基色/球面/副纹理/透明度），**不做破坏性转换**，球面层的闪片与光泽不会丢 |
-| **卡渲预设** | 一键卡渲 / 冷调 / 夜色暖，参数就是 `bv_shading.py` 里那张表，随便改 |
-| **泛光** | 合成器效果：**自发光（Emit）驱动 + 剪影外发光**，不打光也有效果，亮背景不跟着糊；可一键摘除 |
-| **腮红 / 目影 / 还原** | 腮红是反照率上的一层暖色；目影把「目影」材质设成半透明黑；还原成一个 Principled + 基色贴图 |
-| **随时可退** | 不删除、不改写任何原有节点，所以原始材质一直在 |
-
-## 面板
-
-`3D 视图 → N → 「BV-Toon」标签`
-
-``
-▼ BV-Toon 一键卡渲        [模式：替换【模型】材质 ▾]
-                          [ ▶  一 键 卡 渲 ]        ← 卡渲 + 边缘预览 + 目影
-  其他设置                [添加泛光][🗑] / [添加腮红] / [还原成基本材质]
-  BV-Toon · 维护：BVan / DEEPSEEK · 1.0.1
-``
-
-## 依赖
-
-- **Blender 4.5 或更新**（泛光用 Eevee Next 的 Emit 通道；3.6+ 可用但泛光受限）
-- **[mmd_tools](https://extensions.blender.org/add-ons/mmd-tools/)**（开源 MMD 导入器）——
-  读取 MMD 材质、导入模型、边缘预览都要它
-
-不需要其它任何插件。
-
-## 安装
-
-1. `编辑 > 偏好设置 > 附加组件 > 右上角 v > 从磁盘安装` → 选 `BV-Toon-1.0.1.zip`
-2. 在列表里勾上 **BV-Toon**
-3. 选中 MMD 模型 → `N` → 「BV-Toon」标签 → **一键卡渲**
-
-## 目录结构
-
-| 文件 | 作用 |
-|---|---|
-| `__init__.py` | bl_info、面板、操作符 |
-| `bv_util.py` | 读 mmd_tools 的 MMD 材质数据、自建 UV 组、球面/副纹理层 |
-| `bv_shading.py` | 卡渲节点组（Python 现场生成）+ 预设表 |
-| `bv_materials.py` | 套用 / 还原 / 腮红 / 目影 / 材质标志（混合模式、背面剔除） |
-| `bv_glow.py` | 泛光（自发光驱动 + 剪影外发光） |
-| `BVToonData/BVToonShading.blend` | 卡渲节点组资产（55 节点 / 24 接口，可手改） |
+* 最新版本说明：[`RELEASE-1.5.0.md`](RELEASE-1.5.0.md)（可直接粘进 GitHub Release）
+* 逐版改动：[`CHANGELOG.md`](CHANGELOG.md)
 
 ## MMD 使用规范
 
-本插件不含任何 MMD 模型/贴图/动作数据；发布作品时请遵守素材作者的规范并署名：
+用本插件出图并发布时，请遵守素材作者的使用规范并署名，格式见 [`MMD-NOTICE.md`](MMD-NOTICE.md)：
 
 ```text
 模型：<模型作者名>（<配布页面链接>）
@@ -64,8 +23,33 @@
 使用工具：BV-Toon
 ```
 
-详见插件目录里的 [`MMD-NOTICE.md`](MMD-NOTICE.md)。
+## 快速开始
 
-## 许可
+1. 下载 `BV-Toon/` 整个文件夹，或从 Release 页面取打包好的 zip
+2. Blender：`编辑 > 偏好设置 > 附加组件 > v > 从磁盘安装`
+3. 在列表里勾上 **BV-Toon**，选中 MMD 模型 → `N` → 「**Toon**」标签 → **一键卡渲**
 
-GPL-3.0（见 `LICENSE`）。可自由使用、修改、分发；**改版再发布必须同样开源并保留署名**。
+## 目录
+
+| 路径 | 说明 |
+|---|---|
+| `BV-Toon/` | 插件本体（`__init__.py`、`bv_*.py`、`BVToonData/BVToonShading.blend`、README、LICENSE） |
+| `tools/` | 开发/验证脚本：资产生成、A/B 渲图、遮罩与渐变图探针、各项检查 |
+
+## tools 里的脚本
+
+| 脚本 | 作用 |
+|---|---|
+| `build_assets.py` | 由代码生成 `BVToonData/BVToonShading.blend`（卡渲节点组资产） |
+| `render_toon_ab.py` | 同机位渲 A/B 并逐像素对比（透明背景，只统计模型像素） |
+| `probe_mask.py` | 把分界/遮罩接到输出渲出来，看它到底是什么值 |
+| `probe_toon_math.py` / `probe_toon_axis.py` | 数值检查 MMD 渐变贴图（渐变的轴向、对比度、V 坐标范围） |
+| `check_toon_ramp.py` / `check_ambient.py` / `check_oneclick.py` | 接线与行为的验收脚本 |
+
+用法：`blender -b --python tools/<脚本> -- [--pmx <模型.pmx>]`
+
+## 致谢与说明
+
+设计上参考了 MMD 卡渲的通行做法（渐变贴图查表、球面层的加算/乘算语义、目影与描边），
+并受同类 Blender 插件的公开行为启发。本项目与任何第三方插件不存在代码或资源上的关系。
+运行需要开源插件 mmd_tools。
