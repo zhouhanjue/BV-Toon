@@ -5,8 +5,8 @@
 
 **独立编写的 Blender 插件**：代码、节点图、资产全部自写，不含任何第三方插件的代码或资源。
 
-* 插件用法见 [`BV-Toon/README.md`](BV-Toon/README.md) ｜ 逐版改动见 [`CHANGELOG.md`](CHANGELOG.md)
-* 最新版说明：[`RELEASE-1.5.0.md`](RELEASE-1.5.0.md) ｜ 使用规范：[`MMD-NOTICE.md`](MMD-NOTICE.md)
+* 插件用法见 [`BV-Toon/README.md`](BV-Toon/README.md) ｜ 逐版改动见 [`CHANGELOG.md`](BV-Toon/CHANGELOG.md)
+* 最新版说明：[`RELEASE-1.5.0.md`](BV-Toon/RELEASE-1.5.0.md) ｜ 使用规范：[`MMD-NOTICE.md`](BV-Toon/MMD-NOTICE.md)
 * 许可：[`LICENSE`](LICENSE)（中 / 英 / 日三语）
 
 ## 快速开始
