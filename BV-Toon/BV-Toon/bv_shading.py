@@ -1,0 +1,626 @@
+# -*- coding: utf-8 -*-
+"""BVToon -- 卡渲着色节点组：**全部用 Python 现场生成**，不加载任何 .blend 资源。
+
+自己的写法，三件事：
+
+1. **明暗分界与灯光无关**：世界法线 → 相机空间 → 把上下分量清零、只留左右，再按
+   ``受光方向`` 绕竖轴转一个角度，得到一条**竖直的、方向可调的条带**，用软过渡当
+   遮罩。调一个数字就能转分界线 —— MMD 那种"光照是美术选择"的场合比 dot(N, L)
+   合用。乘一层 Fresnel 是为了别把条带绕到剪影上去。
+2. **全部走自发光**：阴影 / 高光 / 轮廓光最后都进 Emission。不打光也出效果，
+   也正好喂给自发光驱动的泛光。
+3. **球面层在反照率上**：球面/副纹理由调用方接进"底色"入口，和 MMD 的算法一致。
+
+© 2025 BVan / DEEPSEEK
+"""
+
+import os
+
+import bpy
+
+#: 节点组名（自己的，与任何第三方无关）
+SHADING_GROUP = "BVToon_Shading"
+
+#: 组接口：中文名，面板与预设都按名字读写
+INPUTS = (
+    ("底色", "NodeSocketColor", (1.0, 1.0, 1.0, 1.0)),
+    ("色调", "NodeSocketColor", (1.0, 0.97, 0.93, 1.0)),
+    ("亮度", "NodeSocketFloat", 1.0),
+    ("反差", "NodeSocketFloat", 0.20),
+    ("暗部色", "NodeSocketColor", (0.78, 0.80, 0.94, 1.0)),
+    ("暗部深浅", "NodeSocketFloat", 0.85),
+    ("受光方向", "NodeSocketFloat", 0.0),
+    ("分界宽度", "NodeSocketFloat", 0.03),
+    ("分界暖边", "NodeSocketFloat", 0.35),
+    ("暖边色", "NodeSocketColor", (1.0, 0.85, 0.45, 1.0)),
+    ("高光色", "NodeSocketColor", (1.0, 1.0, 1.0, 1.0)),
+    ("高光强弱", "NodeSocketFloat", 0.25),
+    ("高光集中", "NodeSocketFloat", 0.55),
+    ("轮廓色", "NodeSocketColor", (1.0, 0.88, 0.78, 1.0)),
+    ("轮廓宽度", "NodeSocketFloat", 0.30),
+    ("轮廓强度", "NodeSocketFloat", 0.0),
+    ("腮红色", "NodeSocketColor", (1.0, 0.62, 0.62, 1.0)),
+    ("腮红浓淡", "NodeSocketFloat", 0.0),
+    # 整块脸上的**保底浓度**（0 = 只有脸颊两团；0.35 = 脸上顺带一点气色）。
+    # 这个保底是必须的：认不出脸颊、或者脸颊圈没盖住可见的脸时，全靠它保证
+    # "腮红一定看得见"（1.7.0 之前那套按亮度卡阈值的实现在好几个模型上是恒 0，
+    # 实测 沃雅妮莎 / 蕾米埃尔 / 初音ミク 全都"没变化"）。
+    ("腮红保底", "NodeSocketFloat", 0.35),
+    # 左右脸颊中心（**物体局部坐标**，和 TexCoord.Object 同一套），半径 0 = 认不出
+    ("腮红左", "NodeSocketVector", (0.0, 0.0, 0.0)),
+    ("腮红右", "NodeSocketVector", (0.0, 0.0, 0.0)),
+    ("腮红半径", "NodeSocketFloat", 0.0),
+    ("腮红软边", "NodeSocketFloat", 0.45),
+    # 模型自带腮红贴图（照れ 之类）的 **alpha** 接这里；默认 1.0 = 不接贴图
+    ("腮红贴图", "NodeSocketFloat", 1.0),
+    # 1 = 用贴图当遮罩（**替换**内置的亮度遮罩）；0 = 用内置的（默认）
+    ("腮红用贴图", "NodeSocketFloat", 0.0),
+    ("Alpha", "NodeSocketFloat", 1.0),
+    ("Base Alpha", "NodeSocketFloat", 1.0),
+    # 渐变贴图（MMD toon ramp）算出来的暗部遮罩：材质树里查完表再送进来
+    # （组的接口不支持图片插座，所以查表放在材质树上做）
+    ("渐变遮罩", "NodeSocketFloat", 0.0),
+    ("渐变强度", "NodeSocketFloat", 0.0),
+)
+
+OUTPUTS = (
+    ("着色", "NodeSocketShader"),
+    ("颜色", "NodeSocketColor"),
+)
+
+#: 预设 = 上面那组接口取不同值。想加/删预设改这张表就行。
+PRESETS = (
+    ("一键卡渲", {
+        "球面强度": 0.30,          # 减半：sphere 是 MMD 的光泽层，给 0.5 时衣服发亮发油
+        "受光方向": 0.42,
+        "色调": (1.00, 0.99, 0.97, 1.0),
+        "暗部色": (0.42, 0.50, 0.86, 1.0),
+        "亮度": 1.05,
+        "反差": 0.00,     # 0 = 完全不往"底色²"的暗版混（它就是衣服发深的主因）
+        "暗部深浅": 0.00,
+        "分界宽度": 0.03,          # 硬两段：三渲二要的是硬分界，不是渐变
+        "分界暖边": 0.00,          # 分界外侧那圈暖色
+        "高光强弱": 0.0,           # 关掉 Fresnel 大面积柔光（油腻的主因）
+        "轮廓色": (1.00, 0.88, 0.78, 1.0),
+        "轮廓强度": 0.0,
+    }),
+    ("冷调", {
+        "球面强度": 0.30,
+        "受光方向": 0.42,
+        "色调": (0.97, 0.99, 1.03, 1.0),
+        "暗部色": (0.52, 0.60, 1.00, 1.0),
+        "亮度": 1.05,
+        "反差": 0.00,     # 0 = 完全不往"底色²"的暗版混（它就是衣服发深的主因）
+        "暗部深浅": 0.00,
+        "分界宽度": 0.03,
+        "分界暖边": 0.00,
+        "高光强弱": 0.0,
+        "轮廓色": (0.82, 0.90, 1.00, 1.0),
+        "轮廓强度": 0.0,
+    }),
+    ("夜色暖", {
+        "球面强度": 0.30,
+        "受光方向": 0.42,
+        "色调": (1.06, 0.97, 0.86, 1.0),
+        "暗部色": (0.42, 0.44, 0.78, 1.0),
+        "亮度": 0.95,
+        "反差": 0.05,
+        "暗部深浅": 0.00,
+        "分界宽度": 0.03,
+        "分界暖边": 0.00,
+        "高光强弱": 0.0,
+        "轮廓色": (1.00, 0.74, 0.48, 1.0),
+        "轮廓强度": 0.60,
+    }),
+)
+
+
+def preset_names():
+    return [name for name, _ in PRESETS]
+
+def preset_values(index):
+    if not 0 <= index < len(PRESETS):
+        return "", {}
+    name, values = PRESETS[index]
+    return name, values
+
+
+# ---------------------------------------------------------------------------
+# 小组件
+# ---------------------------------------------------------------------------
+
+def _color_inputs(node):
+    return [socket for socket in node.inputs if socket.type == "RGBA"]
+
+
+def _color_output(node):
+    return next((socket for socket in node.outputs if socket.type == "RGBA"),
+                node.outputs[0])
+
+
+def _factor_input(node):
+    return next((socket for socket in node.inputs
+                 if socket.name in {"Factor", "Fac"} and socket.type == "VALUE"),
+                None)
+
+
+def mix(nodes, blend_type, factor=1.0, label="", location=(0, 0)):
+    """颜色混合节点：(节点, Fac, A, B, 输出)。"""
+    node = nodes.new("ShaderNodeMix")
+    node.data_type = "RGBA"
+    node.blend_type = blend_type
+    node.label = label
+    node.location = location
+    fac = _factor_input(node)
+    if fac is not None:
+        fac.default_value = float(factor)
+    colors = _color_inputs(node)
+    return (node, fac, colors[0] if colors else None,
+            colors[1] if len(colors) > 1 else None, _color_output(node))
+
+
+def math_node(nodes, operation, value=None, label="", location=(0, 0),
+              clamp=False):
+    node = nodes.new("ShaderNodeMath")
+    node.operation = operation
+    node.label = label
+    node.location = location
+    node.use_clamp = clamp
+    if value is not None and len(node.inputs) > 1:
+        node.inputs[1].default_value = float(value)
+    return node
+
+
+def combine(nodes, location, label=""):
+    """把一个浮点变成 (v,v,v,1) 的颜色，用来当乘/加的操作数。"""
+    node = nodes.new("ShaderNodeCombineColor")
+    node.mode = "RGB"
+    node.location = location
+    node.label = label
+    return node
+
+
+def ramp(nodes, location, elements, label=""):
+    node = nodes.new("ShaderNodeValToRGB")
+    node.location = location
+    node.label = label
+    color_ramp = node.color_ramp
+    while len(color_ramp.elements) > 1:
+        color_ramp.elements.remove(color_ramp.elements[-1])
+    color_ramp.elements[0].position = elements[0][0]
+    color_ramp.elements[0].color = elements[0][1]
+    for position, color in elements[1:]:
+        element = color_ramp.elements.new(position)
+        element.color = color
+    return node
+
+
+def fresnel(nodes, ior, location, label=""):
+    node = nodes.new("ShaderNodeFresnel")
+    node.location = location
+    node.label = label
+    node.inputs["IOR"].default_value = ior
+    return node
+
+
+def soft_step(nodes, value_socket, centre_socket, width_socket, location,
+              label=""):
+    """clamp((value - centre) / width)：一条宽度可调的软边。
+
+    分界的位置和柔和度都能由组输入实时驱动（不用把数值烤进 ColorRamp）。
+    """
+    links = nodes.id_data.links
+    width = math_node(nodes, "MAXIMUM", 0.02, "%s 宽度" % label,
+                      (location[0] - 180, location[1] - 160))
+    links.new(width_socket, width.inputs[0])
+    offset = math_node(nodes, "SUBTRACT", None, "%s 起点" % label,
+                       (location[0] - 180, location[1]))
+    links.new(value_socket, offset.inputs[0])
+    links.new(centre_socket, offset.inputs[1])
+    step = math_node(nodes, "DIVIDE", None, label, location, clamp=True)
+    links.new(offset.outputs[0], step.inputs[0])
+    links.new(width.outputs[0], step.inputs[1])
+    return step
+
+
+def cheek_mask(nodes, coord_socket, centre_socket, radius_socket, soft_socket,
+               location, label=""):
+    """一个球的"脸颊"遮罩：球心 ``centre``、半径 ``radius``、边缘软 ``soft``。
+
+    距离按**物体局部坐标**量（就是 ``TexCoord.Object``），所以模型多大、导入比例
+    是多少都不用改数值 —— 材质树那边只写"脸颊在脸的包围盒里哪个相对位置"。
+
+    半径 0（认不出脸颊）时除法走安全分支、输出 1，但外面会乘一个"有没有脸颊几何"
+    的开关把它切掉，所以不会误伤。
+    """
+    links = nodes.id_data.links
+    offset = nodes.new("ShaderNodeVectorMath")
+    offset.operation = "SUBTRACT"
+    offset.label = "%s 偏移" % label
+    offset.location = (location[0] - 380, location[1])
+    links.new(coord_socket, offset.inputs[0])
+    links.new(centre_socket, offset.inputs[1])
+    length = nodes.new("ShaderNodeVectorMath")
+    length.operation = "LENGTH"
+    length.label = "%s 距离" % label
+    length.location = (location[0] - 200, location[1])
+    links.new(offset.outputs["Vector"], length.inputs[0])
+
+    safe = math_node(nodes, "MAXIMUM", 1e-5, "%s 半径下限" % label,
+                     (location[0] - 380, location[1] - 200))
+    links.new(radius_socket, safe.inputs[0])
+    unit = math_node(nodes, "DIVIDE", None, "%s 距离/半径" % label,
+                     (location[0] - 200, location[1] - 200))
+    links.new(length.outputs["Value"], unit.inputs[0])
+    links.new(safe.outputs[0], unit.inputs[1])
+
+    inner = math_node(nodes, "SUBTRACT", None, "%s 1-软边" % label,
+                      (location[0] - 20, location[1] - 200))
+    inner.inputs[0].default_value = 1.0
+    links.new(soft_socket, inner.inputs[1])
+    fall = nodes.new("ShaderNodeMapRange")
+    fall.label = label
+    fall.location = location
+    fall.clamp = True
+    links.new(unit.outputs[0], fall.inputs["Value"])
+    links.new(inner.outputs[0], fall.inputs["From Min"])
+    fall.inputs["From Max"].default_value = 1.0
+    fall.inputs["To Min"].default_value = 1.0
+    fall.inputs["To Max"].default_value = 0.0
+    return fall
+
+
+# ---------------------------------------------------------------------------
+# 组本体
+# ---------------------------------------------------------------------------
+
+#: 卡渲节点组装在这个资产里（相对插件目录），套用时 append 进来 ——
+#: 和"逆向版"同一个套路：你能直接打开这个 .blend 手改着色，比给每个材质
+#: 现搭几十个节点也快得多。
+ASSET_DIR = "BVToonData"
+ASSET_NAME = "BVToonShading.blend"
+
+
+def asset_path():
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                        ASSET_DIR, ASSET_NAME)
+
+
+def _load_from_asset():
+    """从资产 append 节点组；没有资产就返回 None（回退到现场建）。"""
+    path = asset_path()
+    if not os.path.isfile(path):
+        return None
+    try:
+        with bpy.data.libraries.load(path, link=False) as (source, target):
+            if SHADING_GROUP in source.node_groups:
+                target.node_groups = [SHADING_GROUP]
+    except Exception as error:
+        print("[BV-Toon] 资产读取失败，改用现场建组：%s" % error)
+        return None
+    group = bpy.data.node_groups.get(SHADING_GROUP)
+    if group is not None:
+        try:
+            group.use_fake_user = True   # 没有使用者时保存会把它丢掉（踩过一次）
+        except Exception:
+            pass
+    return group
+
+
+def shading_group():
+    """取卡渲节点组：内存里有就用，否则从资产 append，再不行现场建一个。"""
+    group = bpy.data.node_groups.get(SHADING_GROUP)
+    if group is not None and len(group.nodes):
+        return group
+    group = _load_from_asset()
+    if group is not None and len(group.nodes):
+        return group
+    print("[BV-Toon] 没找到 %s/%s，改为现场生成节点组" % (ASSET_DIR, ASSET_NAME))
+    return build_shading_group()
+
+
+def build_shading_group():
+    """现场生成卡渲节点组（也是生成资产用的那支笔）。"""
+    group = bpy.data.node_groups.get(SHADING_GROUP)
+    if group is not None and len(group.nodes):
+        return group
+    if group is None:
+        group = bpy.data.node_groups.new(SHADING_GROUP, "ShaderNodeTree")
+    for name, kind, _ in INPUTS:
+        group.interface.new_socket(name, in_out="INPUT", socket_type=kind)
+    for name, kind in OUTPUTS:
+        group.interface.new_socket(name, in_out="OUTPUT", socket_type=kind)
+    for socket in group.interface.items_tree:
+        if socket.in_out != "INPUT":
+            continue
+        for name, _kind, default in INPUTS:
+            if socket.name == name and hasattr(socket, "default_value"):
+                socket.default_value = default
+
+    nodes, links = group.nodes, group.links
+    source = nodes.new("NodeGroupInput")
+    source.location = (-1500, 0)
+    sink = nodes.new("NodeGroupOutput")
+    sink.location = (1500, 0)
+
+    # ---- 底色：亮度 → 色调 → 反差 -----------------------------
+    level = combine(nodes, (-1300, 340), "亮度")
+    for channel in ("Red", "Green", "Blue"):
+        links.new(source.outputs["亮度"], level.inputs[channel])
+
+    bright, _, bright_a, bright_b, bright_out = mix(
+        nodes, "MULTIPLY", 1.0, "× 亮度", (-1120, 300))
+    links.new(source.outputs["底色"], bright_a)
+    links.new(level.outputs["Color"], bright_b)
+
+    tinted, _, tint_a, tint_b, tint_out = mix(
+        nodes, "MULTIPLY", 1.0, "× 色调", (-940, 240))
+    links.new(bright_out, tint_a)
+    links.new(source.outputs["色调"], tint_b)
+
+    squared, _, sq_a, sq_b, sq_out = mix(
+        nodes, "MULTIPLY", 1.0, "底色²", (-940, 440))
+    links.new(tint_out, sq_a)
+    links.new(tint_out, sq_b)
+
+    contrast, contrast_fac, contrast_a, contrast_b, contrast_out = mix(
+        nodes, "MIX", 0.2, "反差", (-740, 320))
+    links.new(tint_out, contrast_a)
+    links.new(sq_out, contrast_b)
+    links.new(source.outputs["反差"], contrast_fac)
+
+    # ---- 阴影遮罩：相机空间竖直条带 ------------------------------------
+    geometry = nodes.new("ShaderNodeNewGeometry")
+    geometry.location = (-1300, -140)
+    to_camera = nodes.new("ShaderNodeVectorTransform")
+    to_camera.vector_type = "NORMAL"
+    to_camera.convert_from = "WORLD"
+    to_camera.convert_to = "CAMERA"
+    to_camera.location = (-1120, -140)
+    split = nodes.new("ShaderNodeSeparateXYZ")
+    split.location = (-940, -140)
+    flat = nodes.new("ShaderNodeCombineXYZ")
+    flat.location = (-760, -140)
+    flat.label = "清零上下分量"
+    rotate = nodes.new("ShaderNodeMapping")
+    rotate.vector_type = "POINT"
+    rotate.location = (-580, -140)
+    rotate.label = "受光方向"
+    rotate.inputs["Rotation"].default_value = (0.0, 0.0, 0.0)
+    back = nodes.new("ShaderNodeSeparateXYZ")
+    back.location = (-400, -140)
+    links.new(geometry.outputs["Normal"], to_camera.inputs["Vector"])
+    links.new(to_camera.outputs["Vector"], split.inputs["Vector"])
+    links.new(split.outputs["X"], flat.inputs["X"])
+    links.new(split.outputs["Z"], flat.inputs["Z"])
+    links.new(flat.outputs["Vector"], rotate.inputs["Vector"])
+    links.new(rotate.outputs["Vector"], back.inputs["Vector"])
+
+    # 受光方向 0..1 → 绕竖轴 -180°..180°
+    turn = math_node(nodes, "SUBTRACT", 0.5, "旋转居中", (-940, -340))
+    links.new(source.outputs["受光方向"], turn.inputs[0])
+    turn.inputs[1].default_value = 0.5
+    turn_rad = math_node(nodes, "MULTIPLY", 6.283185, "→ 弧度", (-760, -340))
+    links.new(turn.outputs[0], turn_rad.inputs[0])
+    links.new(turn_rad.outputs[0], rotate.inputs["Rotation"])
+
+    # 遮罩 = clamp((x - (0.5 - 柔和/2)) / 柔和)
+    half = math_node(nodes, "MULTIPLY", 0.5, "柔和/2", (-400, -440))
+    links.new(source.outputs["分界宽度"], half.inputs[0])
+    centre = math_node(nodes, "SUBTRACT", 0.5, "0.5 - 柔和/2", (-220, -440))
+    links.new(half.outputs[0], centre.inputs[1])
+    centre.inputs[0].default_value = 0.5
+
+    band = soft_step(nodes, back.outputs["X"], centre.outputs[0],
+                     source.outputs["分界宽度"], (0, -140), "阴影分界")
+
+    # ---- 渐变贴图（MMD toon ramp）：三渲二的本体 -------------------------
+    # MMD 查表不是用模型 UV，而是 U=0.5、V=受光程度。受光程度要玩家里的旋转法线，
+    # 只能在组内算，所以这里只收材质树送来的「渐变遮罩」（材质的 toon 图查出来的
+    # 暗部程度，1 = 暗部）。渐变强度=0 时它完全不参与，退回自建条带。
+    blended, blend_fac, blend_a, blend_b, blended_out = mix(
+        nodes, "MIX", 0.0, "条带 / 渐变贴图", (200, -400))
+    links.new(band.outputs[0], blend_a)
+    links.new(source.outputs["渐变遮罩"], blend_b)
+    links.new(source.outputs["渐变强度"], blend_fac)
+
+    edge_fade = fresnel(nodes, 1.45, (0, -340), "别绕到剪影")
+    mask = math_node(nodes, "MULTIPLY", None, "× Fresnel", (200, -240))
+    links.new(blended_out, mask.inputs[0])
+    links.new(edge_fade.outputs["Fac"], mask.inputs[1])
+    strength = math_node(nodes, "MULTIPLY", None, "× 暗部深浅", (380, -240))
+    links.new(mask.outputs[0], strength.inputs[0])
+    links.new(source.outputs["暗部深浅"], strength.inputs[1])
+
+    # ---- 分界暖边：分界外侧一圈暖色（MMD 卡渲的标志之一） ----------------
+    # 同一条分界再算一次、宽度放大若干倍，两者相减就得到"紧贴分界外侧的那一圈"。
+    wide_width = math_node(nodes, "MULTIPLY", 9.0, "黄边宽度 = 柔和 × 9",
+                           (200, -460))
+    links.new(source.outputs["分界宽度"], wide_width.inputs[0])
+    band_wide = soft_step(nodes, back.outputs["X"], centre.outputs[0],
+                          wide_width.outputs[0], (380, -460), "黄边分界")
+    edge = math_node(nodes, "SUBTRACT", None, "黄边 = 宽分界 - 硬分界",
+                     (560, -460), clamp=True)
+    links.new(band_wide.outputs[0], edge.inputs[0])
+    links.new(band.outputs[0], edge.inputs[1])
+    edge_amount = math_node(nodes, "MULTIPLY", None, "× 分界暖边", (740, -460),
+                            clamp=True)
+    links.new(edge.outputs[0], edge_amount.inputs[0])
+    links.new(source.outputs["分界暖边"], edge_amount.inputs[1])
+
+    shadow_color, _, shadow_a, shadow_b, shadow_out = mix(
+        nodes, "MULTIPLY", 1.0, "底色 × 暗部色", (-540, 60))
+    links.new(contrast_out, shadow_a)
+    links.new(source.outputs["暗部色"], shadow_b)
+
+    shaded, shaded_fac, shaded_a, shaded_b, shaded_out = mix(
+        nodes, "MIX", 0.0, "上阴影", (560, 160))
+    links.new(contrast_out, shaded_a)
+    links.new(shadow_out, shaded_b)
+    links.new(strength.outputs[0], shaded_fac)
+
+    # ---- 高光：Fresnel 收成一条柔亮边 ----------------------------------
+    spec_edge = fresnel(nodes, 1.60, (560, -340), "高光边缘")
+    spec_sharp = math_node(nodes, "POWER", 0.55, "高光集中", (740, -340),
+                           clamp=True)
+    links.new(spec_edge.outputs["Fac"], spec_sharp.inputs[0])
+    links.new(source.outputs["高光集中"], spec_sharp.inputs[1])
+    spec_level = math_node(nodes, "MULTIPLY", None, "× 高光强弱", (920, -340),
+                           clamp=True)
+    links.new(spec_sharp.outputs[0], spec_level.inputs[0])
+    links.new(source.outputs["高光强弱"], spec_level.inputs[1])
+
+    lit, lit_fac, lit_a, lit_b, lit_out = mix(
+        nodes, "ADD", 0.0, "加高光", (1100, 160))
+    links.new(shaded_out, lit_a)
+    links.new(source.outputs["高光色"], lit_b)
+    links.new(spec_level.outputs[0], lit_fac)
+
+    # 黄边叠在最后（它属于分界，不该被高光盖住）
+    ringed, _ring_fac, ring_a, ring_b, ringed_out = mix(
+        nodes, "ADD", 0.0, "加分界暖边", (1280, 160))
+    links.new(lit_out, ring_a)
+    links.new(source.outputs["暖边色"], ring_b)
+    links.new(edge_amount.outputs[0], _ring_fac)
+
+    # ---- 腮红：脸上的两团颜色（位置由几何定，浓度有保底） ----------------
+    # 为什么不用"亮度阈值"那一套（2026-09-19 两次栽在这上面，别再往回改）：
+    #   ① 绝对亮度阈值：老 MMD 模型（初音ミク/MEIKO）的脸底色是纯白 × 亮度 1.05，
+    #      渲出来常年 >1，"亮度低于 1.10 才算暗部"在这些模型上等于"哪都不加腮红"。
+    #   ② 改成"相对亮度"（除以自己的峰值）后更隐蔽：探针实测最终色比参考峰值亮
+    #      1.0~4.6 倍 ⇒ 阈值项整个归零；把半径设成 100（遮罩恒 1）时腮红有 2300 像素，
+    #      默认半径时只有 21 像素 —— 问题就在这个阈值项。
+    # 所以现在的遮罩**只由几何决定**，不看明暗：
+    #
+    #     遮罩 = 保底 + (1 - 保底) × 脸颊圈      （认不出脸颊时脸颊圈 = 0）
+    #
+    # 保底保证"脸上一眼能看见腮红"，脸颊圈保证"浓在两颊"。看得见这件事不再靠运气。
+    #
+    # 脸颊圈：材质树按脸材质自己的几何算好左右两个球心（物体局部坐标）和半径。
+    coord = nodes.new("ShaderNodeTexCoord")
+    coord.location = (1100, -520)
+    coord.label = "物体坐标"
+    left = cheek_mask(nodes, coord.outputs["Object"], source.outputs["腮红左"],
+                      source.outputs["腮红半径"], source.outputs["腮红软边"],
+                      (1460, -520), "左脸颊")
+    right = cheek_mask(nodes, coord.outputs["Object"], source.outputs["腮红右"],
+                       source.outputs["腮红半径"], source.outputs["腮红软边"],
+                       (1460, -760), "右脸颊")
+    cheeks = math_node(nodes, "MAXIMUM", None, "左右脸颊取大", (1640, -620),
+                       clamp=True)
+    links.new(left.outputs[0], cheeks.inputs[0])
+    links.new(right.outputs[0], cheeks.inputs[1])
+    # 认不出脸颊（半径 0）时把脸颊圈整个掐掉，免得"半径 0 ⇒ 距离/半径 = 0 ⇒ 遮罩 1"
+    have_geo = math_node(nodes, "MULTIPLY", 1000.0, "有脸颊几何吗", (1640, -800),
+                         clamp=True)
+    links.new(source.outputs["腮红半径"], have_geo.inputs[0])
+    geo = math_node(nodes, "MULTIPLY", None, "脸颊圈 × 有几何", (1820, -620),
+                    clamp=True)
+    links.new(cheeks.outputs[0], geo.inputs[0])
+    links.new(have_geo.outputs[0], geo.inputs[1])
+
+    inv_floor = math_node(nodes, "SUBTRACT", None, "1 - 保底", (1820, -860),
+                          clamp=True)
+    inv_floor.inputs[0].default_value = 1.0
+    links.new(source.outputs["腮红保底"], inv_floor.inputs[1])
+    spread = math_node(nodes, "MULTIPLY", None, "(1-保底) × 脸颊圈", (2000, -620),
+                       clamp=True)
+    links.new(inv_floor.outputs[0], spread.inputs[0])
+    links.new(geo.outputs[0], spread.inputs[1])
+    blush_mask = math_node(nodes, "ADD", None, "腮红遮罩 = 保底 + 脸颊圈", (2000, -360),
+                           clamp=True)
+    links.new(spread.outputs[0], blush_mask.inputs[0])
+    links.new(source.outputs["腮红保底"], blush_mask.inputs[1])
+
+    blush_amount = math_node(nodes, "MULTIPLY", None, "× 腮红浓淡",
+                             (2180, -360), clamp=True)
+    links.new(blush_mask.outputs[0], blush_amount.inputs[0])
+    links.new(source.outputs["腮红浓淡"], blush_amount.inputs[1])
+    # 模型自带腮红贴图（照れ 之类）当遮罩：它用 **alpha** 画图案
+    # （实测 照れ.png：98% 全透明、RGB 几乎是均匀浅粉 ⇒ 拿亮度当遮罩完全没用），
+    # 外面接进来的就是这个 alpha。**贴图存在时是"替换"内置遮罩，不是相乘** ——
+    # 相乘会变成两个都 <1 的数再乘一遍，实测能把腮红压到只剩 38 像素（等于没有）。
+    blush_use = math_node(nodes, "MULTIPLY", None, "内置遮罩 × (1-用贴图)", (2320, -480),
+                          clamp=True)
+    one_minus = math_node(nodes, "SUBTRACT", None, "1 - 用贴图", (2180, -620), clamp=True)
+    one_minus.inputs[0].default_value = 1.0
+    links.new(source.outputs["腮红用贴图"], one_minus.inputs[1])
+    links.new(blush_amount.outputs[0], blush_use.inputs[0])
+    links.new(one_minus.outputs[0], blush_use.inputs[1])
+    blush_tex_masked = math_node(nodes, "MULTIPLY", None, "贴图遮罩 × 用贴图", (2320, -760),
+                                clamp=True)
+    links.new(source.outputs["腮红贴图"], blush_tex_masked.inputs[0])
+    links.new(source.outputs["腮红用贴图"], blush_tex_masked.inputs[1])
+    blush_final = math_node(nodes, "ADD", None, "最终腮红强度", (2500, -620), clamp=True)
+    links.new(blush_use.outputs[0], blush_final.inputs[0])
+    links.new(blush_tex_masked.outputs[0], blush_final.inputs[1])
+    blushed, blush_fac, blush_a, blush_b, blushed_out = mix(
+        nodes, "MIX", 0.0, "上腮红", (2620, 40))
+    links.new(ringed_out, blush_a)
+    links.new(source.outputs["腮红色"], blush_b)
+    links.new(blush_final.outputs[0], blush_fac)
+
+    # ---- 轮廓光：Fresnel 环带 × 宽度 × 强度 ----------------------------
+    rim_edge = fresnel(nodes, 2.0, (560, -560), "轮廓边缘")
+    rim_start = math_node(nodes, "SUBTRACT", 1.0, "1 - 轮廓宽度", (740, -560))
+    links.new(source.outputs["轮廓宽度"], rim_start.inputs[1])
+    rim_start.inputs[0].default_value = 1.0
+    rim_width = soft_step(nodes, rim_edge.outputs["Fac"], rim_start.outputs[0],
+                          source.outputs["轮廓宽度"], (920, -560), "轮廓宽度")
+    rim_level = math_node(nodes, "MULTIPLY", None, "× 轮廓强度", (1120, -560),
+                          clamp=True)
+    links.new(rim_width.outputs[0], rim_level.inputs[0])
+    links.new(source.outputs["轮廓强度"], rim_level.inputs[1])
+
+    main_shader = nodes.new("ShaderNodeEmission")
+    main_shader.location = (1100, 420)
+    main_shader.label = "主着色"
+    main_shader.inputs["Strength"].default_value = 1.0
+    links.new(blushed_out, main_shader.inputs["Color"])
+
+    rim_shader = nodes.new("ShaderNodeEmission")
+    rim_shader.location = (1100, 560)
+    rim_shader.label = "轮廓光"
+    rim_shader.inputs["Strength"].default_value = 1.0
+    links.new(source.outputs["轮廓色"], rim_shader.inputs["Color"])
+
+    rim_mix = nodes.new("ShaderNodeMixShader")
+    rim_mix.location = (1300, 480)
+    links.new(rim_level.outputs[0], rim_mix.inputs["Fac"])
+    links.new(main_shader.outputs["Emission"], rim_mix.inputs[1])
+    links.new(rim_shader.outputs["Emission"], rim_mix.inputs[2])
+
+    clear = nodes.new("ShaderNodeBsdfTransparent")
+    clear.location = (1300, 220)
+    alpha_mix = nodes.new("ShaderNodeMixShader")
+    alpha_mix.location = (1400, 380)
+    links.new(source.outputs["Alpha"], alpha_mix.inputs["Fac"])
+    links.new(clear.outputs["BSDF"], alpha_mix.inputs[1])
+    links.new(rim_mix.outputs["Shader"], alpha_mix.inputs[2])
+
+    clear2 = nodes.new("ShaderNodeBsdfTransparent")
+    clear2.location = (1300, 60)
+    base_alpha_mix = nodes.new("ShaderNodeMixShader")
+    base_alpha_mix.location = (1400, 200)
+    links.new(source.outputs["Base Alpha"], base_alpha_mix.inputs["Fac"])
+    links.new(clear2.outputs["BSDF"], base_alpha_mix.inputs[1])
+    links.new(alpha_mix.outputs["Shader"], base_alpha_mix.inputs[2])
+
+    links.new(base_alpha_mix.outputs["Shader"], sink.inputs["着色"])
+    links.new(blushed_out, sink.inputs["颜色"])
+    return group
+
+
+def apply_preset(group_node, values):
+    """把预设的值写进组节点的输入（表里没写的项保持默认）。"""
+    for name, value in values.items():
+        socket = group_node.inputs.get(name)
+        if socket is None:
+            continue
+        try:
+            if socket.type == "RGBA":
+                socket.default_value = tuple(value)
+            else:
+                socket.default_value = float(value)
+        except Exception:
+            pass

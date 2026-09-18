@@ -1,0 +1,16 @@
+{
+  "addon_version": "",
+  "algorithm": "sha256",
+  "files": {
+    "BVToonData/BVToonShading.blend": "782d95989d27a3896122994a915e951e4a456ebac922d25ec2b5d1881ffb44c1",
+    "__init__.py": "60969c43fdc5f8a5e2f71ff75909f2ef177da70e602a975814926905821b5041",
+    "bv_damage.py": "6d1d6f8ed83c976f393312b838271c1d89038ef0babd9b4807eb0e1d49f09e8a",
+    "bv_glow.py": "409d9c452274d871bdb5b4ae2a7f027340247a86cefd98c8b255310fbecd31b0",
+    "bv_integrity.py": "10c76068355ee3e9dcc583b5475b2e983272a8dbfe2b9a31335a5664b8d79802",
+    "bv_materials.py": "f791490e63a6a6a953b7097489c707c99e29f9e4edcfb6688c3551fa69bebf39",
+    "bv_shading.py": "7873c7c0003d66eca59e220fe27c007ec5d933d0b7c24c82d689f51bb3720955",
+    "bv_util.py": "3f072ccb8c42fdd085a9026d4939821156875b8da556f44325df6b7915fadc52"
+  },
+  "format": "bvtoon-integrity/1",
+  "note": "BVToon 完整性清单：顶层 .py + 卡渲资产的 SHA-256。由 tools/package_bv_toon.py 或 tools/install_bv_toon.py 生成。"
+}
