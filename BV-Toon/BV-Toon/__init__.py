@@ -19,7 +19,7 @@
 bl_info = {
     "name": "BV-Toon",
     "author": "BVan / DEEPSEEK",
-    "version": (1, 1, 5),
+    "version": (1, 1, 7),
     "blender": (3, 6, 0),
     "location": "3D视图 > N 面部 > Toon",
     "description": "MMD 模型一键卡渲：原生读取材质、一键套用、边缘预览、目影、腮红、泛光、还原。",
