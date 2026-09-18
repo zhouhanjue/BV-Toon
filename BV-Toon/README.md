@@ -13,6 +13,16 @@
 * 最新版本说明：[`RELEASE-1.4.0.md`](RELEASE-1.4.0.md)（可直接粘进 GitHub Release）
 * 逐版改动：[`CHANGELOG.md`](CHANGELOG.md)
 
+## MMD 使用规范
+
+用本插件出图并发布时，请遵守素材作者的使用规范并署名，格式见 [`MMD-NOTICE.md`](MMD-NOTICE.md)：
+
+```text
+模型：<模型作者名>（<配布页面链接>）
+渲染：BVan
+使用工具：BV-Toon
+```
+
 ## 快速开始
 
 1. 下载 `BV-Toon/` 整个文件夹，或从 Release 页面取打包好的 zip

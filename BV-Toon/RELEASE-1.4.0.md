@@ -62,6 +62,11 @@ blender -b --python tools\audit_bv_toon.py
 
 见 [`CHANGELOG.md`](CHANGELOG.md)（含 1.1.7 → 1.4.0 的逐版明细与踩坑记录）。
 
+## MMD 使用规范
+
+用本插件出图并发布时，请遵守模型/动作作者的使用规范并署名（`模型：<作者>（<链接>）` / `渲染：BVan`）。
+详见 [`MMD-NOTICE.md`](MMD-NOTICE.md)。
+
 ## 许可
 
 GPL-3.0：可自由使用、修改、分发；**改版再发布必须同样开源并保留署名**。
