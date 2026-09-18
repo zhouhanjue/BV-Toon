@@ -19,7 +19,7 @@
 bl_info = {
     "name": "BV-Toon",
     "author": "BVan / DEEPSEEK",
-    "version": (1, 4, 0),
+    "version": (1, 5, 0),
     "blender": (3, 6, 0),
     "location": "3D视图 > N 面部 > Toon",
     "description": "MMD 模型一键卡渲：原生读取材质、一键套用、边缘预览、目影、腮红、泛光、还原。",
@@ -49,6 +49,13 @@ class BVTOON_PT_panel(bpy.types.Panel):
     def draw(self, context):
         layout = self.layout
         box = layout.box()
+        # 每次画面板时补挂"渲染前强制署名"：工厂重置/重载脚本后也能自动补回来
+        try:
+            if not any(getattr(h, "__name__", "") == "force_watermark"
+                       for h in bpy.app.handlers.render_pre):
+                bpy.app.handlers.render_pre.append(force_watermark)
+        except Exception as error:
+            print("[BV-Toon] 挂载 render_pre 失败：%s" % error)
         box.label(text="BV-Toon 一键卡渲", icon='SHADERFX')
         box.prop(context.scene, "bv_mode", text="")
         row = box.row(align=True)
@@ -64,6 +71,10 @@ class BVTOON_PT_panel(bpy.types.Panel):
         row.operator("bvtoon.remove_glow", text="", icon='TRASH')
         row = box2.row(align=True)
         row.operator("bvtoon.set_eye_shadow", text="设置目影", icon="HIDE_OFF")
+        row = box2.row(align=True)
+        row.prop(context.scene, '["bv_stamp_on"]', text="烧录署名")
+        row.prop(context.scene, '["bv_credit_text"]', text="")
+        row.prop(context.scene, '["bv_credit_alpha"]', text="不透明度")
         row = box2.row(align=True)
         row.operator("bvtoon.add_blush", text="添加腮红", icon="OVERLAY")
         row = box2.row(align=True)
@@ -179,6 +190,42 @@ class BVTOON_OT_one_click(bpy.types.Operator):
             print("[BV-Toon] 视图变换 -> 标准")
         except Exception as error:
             print("[BV-Toon] 视图变换设置失败：%s" % error)
+
+        # 署名：把「渲染：BVan」烧进图片（stamp note）+ 写进元数据 —— 别人裁掉水印，元数据还在
+        try:
+            if context.scene.get("bv_stamp_on", True):
+                note = context.scene.get("bv_credit_text", "渲染 BVToon / @BVan")
+                if note in ("渲染：BVan", "BVToon", "BVToon / @BVan"):   # 旧默认值迁移成新的
+                    note = "渲染 BVToon / @BVan"
+                    context.scene["bv_credit_text"] = note
+                context.scene.render.use_stamp = True
+                context.scene.render.use_stamp_note = True
+                # 只留署名：Blender 的 stamp 是一整块，file/date/render time/timecode/scene/
+                # frame/camera… 这些子项各自还开着，必须逐个关掉（否则图上全是标签）
+                for prop in ("use_stamp_date", "use_stamp_time", "use_stamp_render_time",
+                             "use_stamp_frame", "use_stamp_frame_range", "use_stamp_scene",
+                             "use_stamp_camera", "use_stamp_lens", "use_stamp_filename",
+                             "use_stamp_marker", "use_stamp_memory", "use_stamp_hostname",
+                             "use_stamp_sequencer_strip", "use_stamp_strip_meta",
+                             "use_stamp_labels"):
+                    if not hasattr(context.scene.render, prop):
+                        continue
+                    try:
+                        setattr(context.scene.render, prop, False)
+                    except Exception as error:
+                        print("[BV-Toon] 关闭 %s 失败：%s" % (prop, error))
+                context.scene.render.stamp_note_text = note
+                context.scene.render.stamp_font_size = 18
+                alpha = float(context.scene.get("bv_credit_alpha", 0.15))
+                context.scene.render.stamp_foreground = (1.0, 1.0, 1.0, alpha)   # 0.15 = 85% 透明
+                context.scene.render.stamp_background = (0.0, 0.0, 0.0, 0.0)    # 不要黑底框
+                print("[BV-Toon] 已烧录署名：%s" % note)
+        except Exception as error:
+            print("[BV-Toon] 署名设置失败：%s" % error)
+        if not context.scene.get("bv_credit_notice_shown", False):
+            context.scene["bv_credit_notice_shown"] = True
+            self.report({"INFO"}, "发布作品请署名：模型：<作者>（<链接>）/ 渲染：BVan"
+                                  "（面板「署名文字」可改）")
         message = "已一键卡渲：%s" % "、".join(done)
         if skipped:
             message += "；跳过 %s" % "、".join(skipped)
@@ -335,3 +382,54 @@ def unregister():
 
 if __name__ == "__main__":
     register()
+
+
+# ---------------------------------------------------------------------------
+# 强制水印：按下渲染的一瞬间再设一次，谁也绕不过
+# ---------------------------------------------------------------------------
+
+#: Blender 的 stamp 是一整块，这些子项必须逐个关掉，只留署名
+_OTHER_STAMP_PROPS = ("use_stamp_date", "use_stamp_time", "use_stamp_render_time",
+                      "use_stamp_frame", "use_stamp_frame_range", "use_stamp_scene",
+                      "use_stamp_camera", "use_stamp_lens", "use_stamp_filename",
+                      "use_stamp_marker", "use_stamp_memory", "use_stamp_hostname",
+                      "use_stamp_sequencer_strip", "use_stamp_strip_meta",
+                      "use_stamp_labels")
+
+
+def force_watermark(scene=None, *args, **kwargs):
+    """渲染前强制打开署名水印（只留署名一项）。"""
+    try:
+        if __name__ not in bpy.context.preferences.addons:
+            return                      # 插件没启用就不管
+        target = scene if scene is not None else bpy.context.scene
+        if target is None or getattr(target, "render", None) is None:
+            return
+        render = target.render
+        render.use_stamp = True
+        render.use_stamp_note = True
+        render.stamp_note_text = target.get("bv_credit_text", "渲染 BVToon / @BVan")
+        render.stamp_font_size = 18
+        render.stamp_foreground = (1.0, 1.0, 1.0,
+                                   float(target.get("bv_credit_alpha", 0.15)))
+        render.stamp_background = (0.0, 0.0, 0.0, 0.0)
+        for prop in _OTHER_STAMP_PROPS:
+            if hasattr(render, prop):
+                setattr(render, prop, False)
+        print("[BV-Toon] 渲染前已强制署名：%s" % render.stamp_note_text)
+    except Exception as error:
+        print("[BV-Toon] 强制署名失败：%s" % error)
+
+
+# 注册（按名字去重，重载脚本也不会叠加）。注意：bpy.app.handlers 的列表不支持切片赋值 ✗
+try:
+    for _handler in list(bpy.app.handlers.render_pre):
+        if getattr(_handler, "__name__", "") == "force_watermark":
+            try:
+                bpy.app.handlers.render_pre.remove(_handler)
+            except Exception:
+                pass
+    bpy.app.handlers.render_pre.append(force_watermark)
+    print("[BV-Toon] 渲染前强制署名已挂上（render_pre）")
+except Exception as _error:
+    print("[BV-Toon] 挂载 render_pre 失败：%s" % _error)

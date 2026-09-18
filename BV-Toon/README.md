@@ -10,7 +10,7 @@
 
 ## 发版文案
 
-* 最新版本说明：[`RELEASE-1.4.0.md`](RELEASE-1.4.0.md)（可直接粘进 GitHub Release）
+* 最新版本说明：[`RELEASE-1.5.0.md`](RELEASE-1.5.0.md)（可直接粘进 GitHub Release）
 * 逐版改动：[`CHANGELOG.md`](CHANGELOG.md)
 
 ## MMD 使用规范

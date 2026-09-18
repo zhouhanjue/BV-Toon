@@ -6,7 +6,7 @@
 cd github\BV-Toon
 git init
 git add .
-git commit -m "BV-Toon 1.1.5：MMD 一键卡渲插件（自研）"
+git commit -m "BV-Toon 1.5.0：MMD 一键卡渲插件（自研）"
 git branch -M main
 git remote add origin https://github.com/<你的用户名>/BV-Toon.git
 git push -u origin main
@@ -14,7 +14,7 @@ git push -u origin main
 
 ## 2. 建 Release（可选，方便别人一键安装）
 
-把 `dist\BV-Toon-1.1.5.zip` 传到 Release 附件即可（zip 里顶层就是 `BV-Toon/`，
+把 `dist\BV-Toon-1.5.0.zip` 传到 Release 附件即可（zip 里顶层就是 `BV-Toon/`，
 Blender 的「从磁盘安装」能直接吃）。
 
 ## 3. 仓库设置里的建议
