@@ -11,7 +11,7 @@
 
 ## 快速开始
 
-1. 下载 `BV-Toon-1.5.0.zip`（Release 附件）
+1. 下载 `BV-Toon-1.8.0.zip`（Release 附件）
 2. Blender：`编辑 > 偏好设置 > 附加组件 > v > 从磁盘安装`
 3. 勾上 **BV-Toon** → 选中 MMD 模型 → `N` → 「**Toon**」标签 → **一键卡渲**
 
