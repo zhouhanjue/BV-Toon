@@ -26,7 +26,7 @@
 
 ### 需要什么
 
-* **Blender 4.5 或更新版本**（4.3 起才能启用，4.5+ 才是完整体验）
+* **Blender 3.6 或更新版本**
 * 开源插件 **[mmd_tools](https://extensions.blender.org/add-ons/mmd-tools/)** —— 导入 MMD 模型要靠它
 
 ### 装插件
