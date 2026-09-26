@@ -27,7 +27,7 @@ from the model's own material data**.
 
 ### Requirements
 
-* **Blender 4.5 or newer** (it can be enabled from 4.3; 4.5+ is the full experience)
+* **Blender 3.6 or newer** 
 * The open-source add-on **[mmd_tools](https://extensions.blender.org/add-ons/mmd-tools/)** — importing MMD models relies on it
 
 ### Install the add-on
