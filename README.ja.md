@@ -27,7 +27,7 @@
 
 ### 必要なもの
 
-* **Blender 4.5 以降**（4.3 から有効化できますが、4.5 以降がフル機能です）
+* **Blender 3.6 以降**
 * オープンソースのアドオン **[mmd_tools](https://extensions.blender.org/add-ons/mmd-tools/)** —— MMD モデルの読み込みに必要です
 
 ### アドオンのインストール
